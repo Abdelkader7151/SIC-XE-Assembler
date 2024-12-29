@@ -195,6 +195,9 @@ public class SICXEAssembler {
             if (data.get(i).second.equals("BYTE")) {
                 processByteDirective(data.get(i), s);
             }
+            if (data.get(i).second.equals("WORD")) {
+                processWordDirective(data.get(i), s);
+            }
 
             target.add(s.toString());
         }
@@ -438,6 +441,29 @@ public class SICXEAssembler {
                 s.append(ch);
         }
     }
+
+    private void processWordDirective(Data currentData, StringBuilder s) {
+        // Extract the number after the WORD directive
+        String wordValue = currentData.third.trim();
+
+        // Convert the number to hexadecimal
+        try {
+            int num = Integer.parseInt(wordValue);  // Assuming the word is a decimal number
+            String hexValue = Integer.toHexString(num).toUpperCase();
+
+            // Ensure the hexadecimal value is 6 characters long (pad with zeros if needed)
+            while (hexValue.length() < 6) {
+                hexValue = "0" + hexValue;
+            }
+
+            // Append the resulting hexadecimal value to the object code
+            s.append(hexValue);
+        } catch (NumberFormatException e) {
+            // Handle the case where the value is not a valid integer (e.g., an error in the input)
+            System.err.println("Invalid number format after WORD directive: " + wordValue);
+        }
+    }
+
 
     private void printAssemblyResults() {
         System.out.println("**************************Pass1 and Pass2**************************");
