@@ -68,7 +68,6 @@ public class SICXEAssembler {
                 }
             }
 
-            // Handle comments or lines starting with "."
             if (tempString.equals(".")) {
                 str1 = ".";
                 isLine = true;
@@ -107,67 +106,64 @@ public class SICXEAssembler {
 
     private void processLocations() {
         int decLoc = 0;  // Decimal location counter
-        String hexLoc = "0";  // Starting location in hexadecimal
+        String hexLoc;   // Current location in hexadecimal
 
         for (int i = 0; i < data.size(); i++) {
-            Data currentData = data.get(i);
-
-            if (currentData.str.contains(".") || currentData.str.contains("BASE")) {
-                if (currentData.str.contains("BASE")) {
-                    base = currentData.third;  // Set base if the line contains the BASE directive
+            // Check for comments
+            if (data.get(i).str.contains(".") || data.get(i).str.contains("BASE")) {
+                if (data.get(i).str.contains("BASE")) {
+                    base = data.get(i).third;  // Update base address
                 }
-                location.add("");  // Mark location as empty for comments and BASE lines
-                continue;
             }
 
-            // Calculate the location for the current line
+            // Calculate the location for the current instruction
             if (i > 0) {
-                // Add the length of the previous instruction to the current location
+                // Update decimal location based on the length of the previous instruction
                 decLoc += Integer.parseInt(length.get(i - 1), 16);
-                hexLoc = Integer.toHexString(decLoc).toUpperCase();
-            } else {
-                hexLoc = Integer.toHexString(0).toUpperCase();  // First location is 0
             }
 
-            // Update location for the current instruction
-            location.add(hexLoc);
+            // Format the current location as hexadecimal
+            hexLoc = String.format("%04X", decLoc);  // Ensure it's always 4 digits
+            location.add(hexLoc);  // Add the current location to the list
 
-            // Handle special cases like RESW, RESB, and BYTE
+            // Handle special cases for instruction lengths
             updateLengthForSpecialCases(i);
-
-            // Update symbol table with the current location if the line has a label
             addToSymbolTable(i, hexLoc);
         }
 
-        // Ensure the last location is calculated correctly
+        // Ensure the last location is correctly set
         if (!location.isEmpty()) {
-            // If the last location is empty, set it to the last computed location
             String lastLocation = location.get(location.size() - 1);
-            if (lastLocation.isEmpty()) {
-                location.set(location.size() - 1, hexLoc);  // Use the last valid hexLoc
+            // If the last location is empty, set it to the last computed location
+            if (lastLocation.isEmpty() && !length.isEmpty()) {
+                decLoc += Integer.parseInt(length.get(length.size() - 1), 16);  // Add the last instruction's length
+                hexLoc = String.format("%04X", decLoc);  // Format as 4-digit hex
+                location.set(location.size() - 1, hexLoc);  // Update last location
             }
         }
     }
 
 
     private void updateLengthForSpecialCases(int i) {
-        if (data.get(i).second.equals("BYTE")) {
+        if (data.get(i).second.equals("BASE")) {
+            length.set(i, "0");  // Set length to 0 for BASE directive
+        } else if (data.get(i).second.equals("BYTE")) {
             if (data.get(i).third.contains("C")) {
                 char[] c = data.get(i).third
                         .substring(data.get(i).third.indexOf('\'') + 1, data.get(i).third.length() - 1)
                         .toCharArray();
-                length.set(i, Integer.toString(c.length));
+                length.set(i, Integer.toString(c.length));  // Set length based on character count
             } else {
-                length.set(i, "1");
+                length.set(i, "1");  // For X or other BYTE formats
             }
-        } else if (data.get(i).second.contains("RESW")) {
-            length.set(i, Integer.toHexString(Integer.parseInt(data.get(i).third) * 3));
-        } else if (data.get(i).second.contains("RESB")) {
-            length.set(i, Integer.toHexString(Integer.parseInt(data.get(i).third)));
-        } else if (data.get(i).second.contains("WORD")) {
-            length.set(i, "3");
-        } else if (data.get(i).second.contains("CLEAR")) {
-            length.set(i, "2");
+        } else if (data.get(i).second.equals("RESW")) {
+            length.set(i, Integer.toHexString(Integer.parseInt(data.get(i).third) * 3));  // 3 bytes per word
+        } else if (data.get(i).second.equals("RESB")) {
+            length.set(i, Integer.toHexString(Integer.parseInt(data.get(i).third)));  // Reserve bytes
+        } else if (data.get(i).second.equals("WORD")) {
+            length.set(i, "3");  // WORD occupies 3 bytes
+        } else if (data.get(i).second.equals("CLEAR")) {
+            length.set(i, "2");  // CLEAR occupies 2 bytes
         }
     }
 
@@ -187,7 +183,7 @@ public class SICXEAssembler {
                 processFormat2(data.get(i), s);
             }
             if (data.get(i).format.equals("4")) {
-                processFormat4(data.get(i), s, i);
+                processFormat4(data.get(i), s);
             }
             if (data.get(i).format.equals("3")) {
                 processFormat3(data.get(i), s, i);
@@ -233,11 +229,11 @@ public class SICXEAssembler {
 
 
 
-    private void processFormat4(Data currentData, StringBuilder s, int i) {
+    private void processFormat4(Data currentData, StringBuilder s) {
         String str = "", nixbpe = "";
         str = Integer.toBinaryString(Integer.parseInt(currentData.opcode, 16));
-        if(str.equals("0")) str = "000000"; // LDA needs leading zeros since opcode=0
-
+        if(str.equals("0"))
+            str = "000000"; // LDA needs leading zeros since opcode=0
         if(currentData.third.contains("#"))
             nixbpe = "010001";
         else if(currentData.third.contains("@"))
@@ -278,9 +274,10 @@ public class SICXEAssembler {
     private void processFormat3(Data currentData, StringBuilder s, int i) {
         String str = "", nixbpe = "";
         str = Integer.toBinaryString(Integer.parseInt(currentData.opcode, 16));
-        if(str.equals("0")) str = "000000";
+        if(str.equals("0"))
+            str = "000000";
 
-        if(currentData.third.equals(" ") || currentData.equals("RSUB")) {
+        if(currentData.third.equals(" ") || currentData.second.equals("RSUB")) {
             nixbpe = "110000";
             str = Integer.toHexString(Integer.parseInt((str.substring(0, str.length()-2) + nixbpe), 2)).toUpperCase();
             str += "000";
@@ -294,6 +291,8 @@ public class SICXEAssembler {
                     break;
                 }
             }
+            if(num2.equals(""))
+                num2 = location.get(i+2);
             tot = Integer.parseInt(num, 16) - Integer.parseInt(num2, 16);
             if(tot < 2047 && tot > -2048) {
                 nixbpe = "111010";
@@ -542,7 +541,7 @@ public class SICXEAssembler {
         e.append("E^").append(startAddrHex);
 
         // Print HTE records
-        System.out.println("\n******************* HTE records *******************");
+        System.out.println("******************* HTE records *******************");
         System.out.println(h.toString());
         for (StringBuilder tRecord : t) {
             System.out.println(tRecord.toString());
